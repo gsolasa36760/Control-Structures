@@ -1,0 +1,154 @@
+import random
+from collections import defaultdict
+
+class EmployeeScheduler:
+    def __init__(self):
+        self.employees = {}
+        self.schedule = {
+            'Monday': {'morning': [], 'afternoon': [], 'evening': []},
+            'Tuesday': {'morning': [], 'afternoon': [], 'evening': []},
+            'Wednesday': {'morning': [], 'afternoon': [], 'evening': []},
+            'Thursday': {'morning': [], 'afternoon': [], 'evening': []},
+            'Friday': {'morning': [], 'afternoon': [], 'evening': []},
+            'Saturday': {'morning': [], 'afternoon': [], 'evening': []},
+            'Sunday': {'morning': [], 'afternoon': [], 'evening': []}
+        }
+        self.days = list(self.schedule.keys())
+        self.shifts = ['morning', 'afternoon', 'evening']
+    
+    def add_employee(self, name, preferences):
+        """Add an employee with their shift preferences"""
+        self.employees[name] = {
+            'preferences': preferences,
+            'days_assigned': 0,
+            'assigned_shifts': defaultdict(list)
+        }
+    
+    def assign_shifts(self):
+        """Assign shifts to employees based on preferences and constraints"""
+        # First pass: assign preferred shifts
+        for day in self.days:
+            for shift in self.shifts:
+                # Get employees who prefer this shift today
+                preferred_employees = [
+                    emp for emp, data in self.employees.items()
+                    if data['preferences'][day][0] == shift and 
+                    data['days_assigned'] < 5 and
+                    day not in data['assigned_shifts']
+                ]
+                
+                # Assign up to 2 employees to this shift
+                for emp in preferred_employees[:2]:
+                    self._assign_shift(emp, day, shift)
+        
+        # Second pass: ensure at least 2 employees per shift
+        for day in self.days:
+            for shift in self.shifts:
+                while len(self.schedule[day][shift]) < 2:
+                    # Find available employees who haven't worked 5 days yet
+                    available_employees = [
+                        emp for emp, data in self.employees.items()
+                        if data['days_assigned'] < 5 and
+                        day not in data['assigned_shifts']
+                    ]
+                    
+                    if not available_employees:
+                        break  # No more employees available
+                    
+                    # Assign a random available employee
+                    emp = random.choice(available_employees)
+                    self._assign_shift(emp, day, shift)
+        
+        # Third pass: try to accommodate secondary preferences
+        for emp, data in self.employees.items():
+            if data['days_assigned'] < 5:
+                remaining_days = [day for day in self.days if day not in data['assigned_shifts']]
+                for day in remaining_days:
+                    if data['days_assigned'] >= 5:
+                        break
+                    
+                    # Try preferences in order
+                    for pref_shift in data['preferences'][day]:
+                        if len(self.schedule[day][pref_shift]) < 3:  # Allow up to 3 per shift
+                            self._assign_shift(emp, day, pref_shift)
+                            break
+    
+    def _assign_shift(self, employee, day, shift):
+        """Helper method to assign a shift to an employee"""
+        self.schedule[day][shift].append(employee)
+        self.employees[employee]['assigned_shifts'][day] = shift
+        self.employees[employee]['days_assigned'] += 1
+    
+    def display_schedule(self):
+        """Display the final schedule"""
+        print("\nFinal Weekly Schedule:")
+        print("=" * 50)
+        for day in self.days:
+            print(f"\n{day}:")
+            for shift in self.shifts:
+                employees = ", ".join(self.schedule[day][shift]) if self.schedule[day][shift] else "None"
+                print(f"  {shift.capitalize()}: {employees}")
+        print("=" * 50)
+
+def get_employee_preferences():
+    """Collect employee preferences from user input"""
+    employees = {}
+    days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    shifts = ['morning', 'afternoon', 'evening']
+    
+    while True:
+        name = input("\nEnter employee name (or 'done' to finish): ").strip()
+        if name.lower() == 'done':
+            break
+        
+        preferences = {}
+        print(f"\nEnter shift preferences for {name} (1=most preferred, 3=least preferred)")
+        
+        for day in days:
+            print(f"\n{day}:")
+            # Get preferences for each shift
+            prefs = {}
+            for shift in shifts:
+                while True:
+                    try:
+                        rank = int(input(f"  {shift}: "))
+                        if rank < 1 or rank > 3:
+                            print("Please enter a number between 1 and 3")
+                            continue
+                        prefs[shift] = rank
+                        break
+                    except ValueError:
+                        print("Please enter a valid number")
+            
+            # Sort shifts by preference (1 is highest)
+            sorted_shifts = sorted(shifts, key=lambda x: prefs[x])
+            preferences[day] = sorted_shifts
+        
+        employees[name] = preferences
+    
+    return employees
+
+def main():
+    print("Employee Schedule Management System")
+    print("=" * 50)
+    
+    # Get employee preferences
+    employee_prefs = get_employee_preferences()
+    
+    if not employee_prefs:
+        print("No employees entered. Exiting.")
+        return
+    
+    # Initialize scheduler
+    scheduler = EmployeeScheduler()
+    for name, prefs in employee_prefs.items():
+        scheduler.add_employee(name, prefs)
+    
+    # Assign shifts
+    scheduler.assign_shifts()
+    
+    # Display schedule
+    scheduler.display_schedule()
+
+if __name__ == "__main__":
+    main()
