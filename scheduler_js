@@ -1,1 +1,212 @@
+class EmployeeScheduler {
+    constructor() {
+        this.employees = {};
+        this.schedule = {
+            'Monday': { morning: [], afternoon: [], evening: [] },
+            'Tuesday': { morning: [], afternoon: [], evening: [] },
+            'Wednesday': { morning: [], afternoon: [], evening: [] },
+            'Thursday': { morning: [], afternoon: [], evening: [] },
+            'Friday': { morning: [], afternoon: [], evening: [] },
+            'Saturday': { morning: [], afternoon: [], evening: [] },
+            'Sunday': { morning: [], afternoon: [], evening: [] }
+        };
+        this.days = Object.keys(this.schedule);
+        this.shifts = ['morning', 'afternoon', 'evening'];
+    }
 
+    addEmployee(name, preferences) {
+        this.employees[name] = {
+            preferences: preferences,
+            daysAssigned: 0,
+            assignedShifts: {}
+        };
+    }
+
+    assignShifts() {
+        // First pass: assign preferred shifts
+        this.days.forEach(day => {
+            this.shifts.forEach(shift => {
+                // Get employees who prefer this shift today and are available
+                const preferredEmployees = Object.keys(this.employees)
+                    .filter(emp => {
+                        const empData = this.employees[emp];
+                        return empData.preferences[day][0] === shift && 
+                               empData.daysAssigned < 5 && 
+                               !empData.assignedShifts[day];
+                    })
+                    .sort((a, b) => {
+                        // Sort by number of days already assigned (to distribute workload)
+                        return this.employees[a].daysAssigned - this.employees[b].daysAssigned;
+                    });
+
+                // Assign up to 2 employees to this shift
+                preferredEmployees.slice(0, 2).forEach(emp => {
+                    this._assignShift(emp, day, shift);
+                });
+            });
+        });
+
+        // Second pass: ensure at least 2 employees per shift
+        this.days.forEach(day => {
+            this.shifts.forEach(shift => {
+                while (this.schedule[day][shift].length < 2) {
+                    // Find available employees who haven't worked 5 days yet
+                    const availableEmployees = Object.keys(this.employees)
+                        .filter(emp => {
+                            const empData = this.employees[emp];
+                            return empData.daysAssigned < 5 && 
+                                   !empData.assignedShifts[day];
+                        })
+                        .sort((a, b) => {
+                            // Prioritize employees who have this shift as a preference
+                            const aPref = this.employees[a].preferences[day].indexOf(shift);
+                            const bPref = this.employees[b].preferences[day].indexOf(shift);
+                            return aPref - bPref;
+                        });
+
+                    if (availableEmployees.length === 0) break; // No more employees available
+
+                    // Assign the most suitable employee
+                    this._assignShift(availableEmployees[0], day, shift);
+                }
+            });
+        });
+
+        // Third pass: try to accommodate secondary preferences for employees with <5 days
+        Object.keys(this.employees).forEach(emp => {
+            const empData = this.employees[emp];
+            
+            if (empData.daysAssigned < 5) {
+                const remainingDays = this.days.filter(day => !empData.assignedShifts[day]);
+                
+                for (const day of remainingDays) {
+                    if (empData.daysAssigned >= 5) break;
+
+                    // Try preferences in order
+                    for (const prefShift of empData.preferences[day]) {
+                        if (this.schedule[day][prefShift].length < 3) { // Allow up to 3 per shift
+                            this._assignShift(emp, day, prefShift);
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    _assignShift(employee, day, shift) {
+        this.schedule[day][shift].push(employee);
+        this.employees[employee].assignedShifts[day] = shift;
+        this.employees[employee].daysAssigned++;
+    }
+
+    displaySchedule() {
+        console.log("\nFinal Weekly Schedule:");
+        console.log("=".repeat(50));
+        
+        this.days.forEach(day => {
+            console.log(`\n${day}:`);
+            this.shifts.forEach(shift => {
+                const employees = this.schedule[day][shift].length > 0 
+                    ? this.schedule[day][shift].join(", ") 
+                    : "None";
+                console.log(`  ${shift.charAt(0).toUpperCase() + shift.slice(1)}: ${employees}`);
+            });
+        });
+        
+        console.log("=".repeat(50));
+        
+        // Display employee workload summary
+        console.log("\nEmployee Workload Summary:");
+        console.log("-".repeat(30));
+        Object.keys(this.employees).forEach(emp => {
+            console.log(`${emp}: ${this.employees[emp].daysAssigned} days`);
+        });
+    }
+}
+
+function getEmployeePreferences() {
+    const readline = require('readline-sync');
+    const employees = {};
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const shifts = ['morning', 'afternoon', 'evening'];
+
+    while (true) {
+        const name = readline.question("\nEnter employee name (or 'done' to finish): ").trim();
+        if (name.toLowerCase() === 'done') break;
+
+        const preferences = {};
+        console.log(`\nEnter shift preferences for ${name} (1=most preferred, 3=least preferred)`);
+
+        days.forEach(day => {
+            console.log(`\n${day}:`);
+            const prefs = {};
+            
+            // Get rankings for each shift
+            shifts.forEach(shift => {
+                while (true) {
+                    const input = readline.question(`  ${shift}: `).trim();
+                    const rank = parseInt(input);
+                    
+                    if (isNaN(rank)) {
+                        console.log("Please enter a valid number");
+                        continue;
+                    }
+                    
+                    if (rank < 1 || rank > 3) {
+                        console.log("Please enter a number between 1 and 3");
+                        continue;
+                    }
+                    
+                    if (Object.values(prefs).includes(rank)) {
+                        console.log("Each preference rank must be unique for a given day");
+                        continue;
+                    }
+                    
+                    prefs[shift] = rank;
+                    break;
+                }
+            });
+
+            // Sort shifts by preference (1 is highest)
+            preferences[day] = [...shifts].sort((a, b) => prefs[a] - prefs[b]);
+        });
+
+        employees[name] = preferences;
+    }
+
+    if (Object.keys(employees).length < 2) {
+        console.log("\nError: At least 2 employees are required for scheduling.");
+        process.exit(1);
+    }
+
+    return employees;
+}
+
+function main() {
+    console.log("Employee Schedule Management System");
+    console.log("=".repeat(50));
+    console.log("Requirements:");
+    console.log("- Each employee can work max 5 days per week");
+    console.log("- Each shift must have at least 2 employees");
+    console.log("- Employees provide preference rankings (1-3) for each shift");
+    console.log("=".repeat(50));
+
+    // Get employee preferences
+    const employeePrefs = getEmployeePreferences();
+
+    // Initialize scheduler
+    const scheduler = new EmployeeScheduler();
+    Object.entries(employeePrefs).forEach(([name, prefs]) => {
+        scheduler.addEmployee(name, prefs);
+    });
+
+    // Assign shifts
+    scheduler.assignShifts();
+
+    // Display schedule
+    scheduler.displaySchedule();
+}
+
+// Run the program
+main();
